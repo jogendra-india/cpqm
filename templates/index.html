@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CPQM — Cursor Prompt Queue Manager</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-2: #1c2129;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-hover: #79c0ff;
+      --green: #3fb950;
+      --green-dim: #1a3a2a;
+      --red: #f85149;
+      --red-dim: #3d1a1a;
+      --orange: #d29922;
+      --radius: 8px;
+      --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header h1 .logo {
+      font-size: 22px;
+      color: var(--accent);
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .new-chat-input {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      width: 120px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .new-chat-input:focus { border-color: var(--accent); }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--red);
+      border-color: var(--red);
+    }
+    .btn-danger:hover { background: var(--red-dim); }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border-color: var(--border);
+    }
+    .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+    .empty-state h2 { font-size: 20px; margin-bottom: 8px; color: var(--text); }
+    .empty-state p { font-size: 14px; line-height: 1.6; }
+
+    .chat-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 16px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .chat-panel.ended { border-color: var(--red); opacity: 0.7; }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      cursor: pointer;
+      user-select: none;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-header:hover { background: #1f262e; }
+
+    .panel-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .status-badge {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-active {
+      background: var(--green-dim);
+      color: var(--green);
+      border: 1px solid var(--green);
+    }
+
+    .status-end {
+      background: var(--red-dim);
+      color: var(--red);
+      border: 1px solid var(--red);
+    }
+
+    .panel-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .chevron {
+      transition: transform 0.2s;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .chat-panel.collapsed .chevron { transform: rotate(-90deg); }
+    .chat-panel.collapsed .panel-body { display: none; }
+
+    .panel-body { padding: 20px; }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .message-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: var(--font-mono);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .message-input:focus { border-color: var(--accent); }
+    .message-input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .column h3 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .column h3 .count {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+    }
+
+    .msg-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 60px;
+    }
+
+    .msg-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-family: var(--font-mono);
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .msg-item .timestamp {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .msg-item.end-signal {
+      border-color: var(--red);
+      color: var(--red);
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .msg-empty {
+      color: var(--text-muted);
+      font-size: 13px;
+      font-style: italic;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      font-size: 13px;
+      animation: slideIn 0.2s ease-out, fadeOut 0.3s 2.5s ease-in forwards;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes fadeOut { to { opacity: 0; transform: translateY(10px); } }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span class="logo">&#9881;</span> Cursor Prompt Queue Manager</h1>
+  <div class="header-actions">
+    <input type="text" class="new-chat-input" id="newChatId" placeholder="Chat ID...">
+    <button class="btn btn-primary" onclick="createChat()">+ New Chat</button>
+  </div>
+</div>
+
+<div class="container" id="app">
+  <div class="empty-state" id="emptyState">
+    <div class="icon">&#128233;</div>
+    <h2>No Chat Queues Yet</h2>
+    <p>Enter a Chat ID above and click "+ New Chat" to create a queue.<br>
+    Then use <code>CPQM_ID=&lt;n&gt;</code> in your Cursor session to start polling.</p>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const BASE = '';
+let chats = {};
+
+function toast(msg) {
+  const c = document.getElementById('toasts');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(BASE + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  return res.json();
+}
+
+async function createChat() {
+  const input = document.getElementById('newChatId');
+  const id = input.value.trim();
+  if (!id) return;
+  if (chats[id]) { toast(`Chat ${id} already exists`); return; }
+  await api(`/chats/${id}`, { method: 'POST' });
+  input.value = '';
+  toast(`Chat ${id} created`);
+  await refresh();
+}
+
+document.getElementById('newChatId').addEventListener('keydown', e => {
+  if (e.key === 'Enter') createChat();
+});
+
+async function enqueue(chatId) {
+  const input = document.getElementById(`msg-${chatId}`);
+  const text = input.value.trim();
+  if (!text) return;
+  await api(`/queue/${chatId}`, { method: 'POST', body: JSON.stringify({ message: text }) });
+  input.value = '';
+  toast(`Queued to Chat ${chatId}`);
+  await refresh();
+}
+
+async function endChat(chatId) {
+  if (!confirm(`End Chat ${chatId}? Cursor will stop polling this queue.`)) return;
+  await api(`/queue/${chatId}/end`, { method: 'POST' });
+  toast(`Chat ${chatId} ended`);
+  await refresh();
+}
+
+async function deleteChat(chatId) {
+  if (!confirm(`Delete Chat ${chatId}? All data will be lost.`)) return;
+  await api(`/chats/${chatId}`, { method: 'DELETE' });
+  delete chats[chatId];
+  toast(`Chat ${chatId} deleted`);
+  await refresh();
+}
+
+function togglePanel(chatId) {
+  const panel = document.getElementById(`panel-${chatId}`);
+  if (panel) panel.classList.toggle('collapsed');
+}
+
+async function refresh() {
+  const chatList = await api('/chats');
+  const container = document.getElementById('app');
+  const empty = document.getElementById('emptyState');
+
+  if (chatList.length === 0) {
+    empty.style.display = '';
+    document.querySelectorAll('.chat-panel').forEach(el => el.remove());
+    return;
+  }
+  empty.style.display = 'none';
+
+  const statusMap = {};
+  for (const c of chatList) {
+    const data = await api(`/queue/${c.chat_id}/status`);
+    statusMap[c.chat_id] = data;
+    chats[c.chat_id] = data;
+  }
+
+  const currentIds = new Set(chatList.map(c => c.chat_id));
+  document.querySelectorAll('.chat-panel').forEach(el => {
+    const id = el.id.replace('panel-', '');
+    if (!currentIds.has(id)) el.remove();
+  });
+
+  for (const c of chatList) {
+    const data = statusMap[c.chat_id];
+    renderPanel(c.chat_id, data);
+  }
+}
+
+function renderPanel(chatId, data) {
+  let panel = document.getElementById(`panel-${chatId}`);
+  const isEnd = data.status === 'END';
+  const isCollapsed = panel ? panel.classList.contains('collapsed') : false;
+
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = `panel-${chatId}`;
+    panel.className = 'chat-panel';
+    document.getElementById('app').appendChild(panel);
+  }
+
+  panel.className = `chat-panel${isEnd ? ' ended' : ''}${isCollapsed ? ' collapsed' : ''}`;
+
+  const pendingHtml = data.pending.length > 0
+    ? data.pending.map(m => `
+        <div class="msg-item">
+          ${escHtml(m.text)}
+          <div class="timestamp">Queued ${fmtTime(m.queued_at)}</div>
+        </div>`).join('')
+    : '<div class="msg-empty">No pending messages</div>';
+
+  const consumedHtml = data.consumed.length > 0
+    ? data.consumed.slice().reverse().map(m => `
+        <div class="msg-item">
+          ${escHtml(m.text)}
+          <div class="timestamp">Consumed ${fmtTime(m.consumed_at)}</div>
+        </div>`).join('')
+    : '<div class="msg-empty">Nothing consumed yet</div>';
+
+  const endSignal = isEnd
+    ? '<div class="msg-item end-signal">&#9940; END SIGNAL SENT</div>'
+    : '';
+
+  panel.innerHTML = `
+    <div class="panel-header" onclick="togglePanel('${chatId}')">
+      <div class="panel-title">
+        <span class="chevron">&#9660;</span>
+        Chat ID: ${chatId}
+        <span class="status-badge ${isEnd ? 'status-end' : 'status-active'}">${data.status}</span>
+      </div>
+      <div class="panel-controls">
+        ${!isEnd ? `<button class="btn btn-danger" onclick="event.stopPropagation(); endChat('${chatId}')">&#128308; End</button>` : ''}
+        <button class="btn btn-ghost" onclick="event.stopPropagation(); deleteChat('${chatId}')" title="Delete">&#128465;</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="input-row">
+        <input type="text" class="message-input" id="msg-${chatId}"
+               placeholder="Type a prompt for Cursor..."
+               ${isEnd ? 'disabled' : ''}
+               onkeydown="if(event.key==='Enter') enqueue('${chatId}')">
+        <button class="btn btn-primary" onclick="enqueue('${chatId}')" ${isEnd ? 'disabled' : ''}>Queue</button>
+      </div>
+      <div class="columns">
+        <div class="column">
+          <h3>&#128203; Pending <span class="count">${data.pending.length}</span></h3>
+          <div class="msg-list">${pendingHtml}${endSignal}</div>
+        </div>
+        <div class="column">
+          <h3>&#9989; Consumed <span class="count">${data.consumed.length}</span></h3>
+          <div class="msg-list">${consumedHtml}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function escHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+
+</body>
+</html>
