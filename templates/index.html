@@ -19,6 +19,7 @@
       --red: #f85149;
       --red-dim: #3d1a1a;
       --orange: #d29922;
+      --orange-dim: #3d2e0a;
       --radius: 8px;
       --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
     }
@@ -52,10 +53,7 @@
       gap: 10px;
     }
 
-    .header h1 .logo {
-      font-size: 22px;
-      color: var(--accent);
-    }
+    .header h1 .logo { font-size: 22px; color: var(--accent); }
 
     .header-actions {
       display: flex;
@@ -88,34 +86,24 @@
       display: inline-flex;
       align-items: center;
       gap: 6px;
-    }
-
-    .btn-primary {
-      background: var(--accent);
-      color: #fff;
-      border-color: var(--accent);
-    }
-    .btn-primary:hover { background: var(--accent-hover); }
-
-    .btn-danger {
       background: transparent;
-      color: var(--red);
-      border-color: var(--red);
+      color: var(--text);
     }
+
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-danger { color: var(--red); border-color: var(--red); }
     .btn-danger:hover { background: var(--red-dim); }
 
-    .btn-ghost {
-      background: transparent;
-      color: var(--text-muted);
-      border-color: var(--border);
-    }
+    .btn-reopen { color: var(--orange); border-color: var(--orange); }
+    .btn-reopen:hover { background: var(--orange-dim); }
+
+    .btn-ghost { color: var(--text-muted); border-color: var(--border); }
     .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
 
-    .container {
-      max-width: 1000px;
-      margin: 0 auto;
-      padding: 24px;
-    }
+    .container { max-width: 1000px; margin: 0 auto; padding: 24px; }
 
     .empty-state {
       text-align: center;
@@ -168,40 +156,18 @@
       letter-spacing: 0.5px;
     }
 
-    .status-active {
-      background: var(--green-dim);
-      color: var(--green);
-      border: 1px solid var(--green);
-    }
+    .status-active { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+    .status-end { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
 
-    .status-end {
-      background: var(--red-dim);
-      color: var(--red);
-      border: 1px solid var(--red);
-    }
+    .panel-controls { display: flex; gap: 6px; align-items: center; }
 
-    .panel-controls {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
-
-    .chevron {
-      transition: transform 0.2s;
-      color: var(--text-muted);
-      font-size: 12px;
-    }
-
+    .chevron { transition: transform 0.2s; color: var(--text-muted); font-size: 12px; }
     .chat-panel.collapsed .chevron { transform: rotate(-90deg); }
     .chat-panel.collapsed .panel-body { display: none; }
 
     .panel-body { padding: 20px; }
 
-    .input-row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 20px;
-    }
+    .input-row { display: flex; gap: 8px; margin-bottom: 20px; align-items: flex-end; }
 
     .message-input {
       flex: 1;
@@ -214,16 +180,16 @@
       font-family: var(--font-mono);
       outline: none;
       transition: border-color 0.2s;
+      resize: vertical;
+      min-height: 42px;
+      max-height: 200px;
+      line-height: 1.5;
     }
 
     .message-input:focus { border-color: var(--accent); }
     .message-input:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    .columns {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-    }
+    .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
     .column h3 {
       font-size: 12px;
@@ -244,12 +210,7 @@
       font-size: 11px;
     }
 
-    .msg-list {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      min-height: 60px;
-    }
+    .msg-list { display: flex; flex-direction: column; gap: 6px; min-height: 60px; }
 
     .msg-item {
       background: var(--bg);
@@ -262,26 +223,40 @@
       word-break: break-word;
     }
 
-    .msg-item .timestamp {
-      font-size: 11px;
+    .msg-item .msg-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+    .msg-item .timestamp { font-size: 11px; color: var(--text-muted); }
+    .msg-item .btn-delete-msg {
+      background: none;
+      border: none;
       color: var(--text-muted);
-      margin-top: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: all 0.15s;
+      opacity: 0;
     }
+    .msg-item:hover .btn-delete-msg { opacity: 1; }
+    .msg-item .btn-delete-msg:hover { color: var(--red); background: var(--red-dim); }
+    .msg-item.end-signal { border-color: var(--red); color: var(--red); font-weight: 600; text-align: center; }
+    .msg-item .msg-text { white-space: pre-wrap; }
+    .msg-empty { color: var(--text-muted); font-size: 13px; font-style: italic; padding: 10px; text-align: center; }
 
-    .msg-item.end-signal {
-      border-color: var(--red);
-      color: var(--red);
+    .chat-id-editable {
+      background: none;
+      border: 1px solid transparent;
+      color: var(--text);
+      font-size: 15px;
       font-weight: 600;
-      text-align: center;
+      font-family: inherit;
+      padding: 2px 6px;
+      border-radius: 4px;
+      outline: none;
+      width: 100px;
+      transition: border-color 0.2s, background 0.2s;
     }
-
-    .msg-empty {
-      color: var(--text-muted);
-      font-size: 13px;
-      font-style: italic;
-      padding: 10px;
-      text-align: center;
-    }
+    .chat-id-editable:hover { border-color: var(--border); background: var(--surface); }
+    .chat-id-editable:focus { border-color: var(--accent); background: var(--surface); }
 
     .toast-container {
       position: fixed;
@@ -313,7 +288,7 @@
   <h1><span class="logo">&#9881;</span> Cursor Prompt Queue Manager</h1>
   <div class="header-actions">
     <input type="text" class="new-chat-input" id="newChatId" placeholder="Chat ID...">
-    <button class="btn btn-primary" onclick="createChat()">+ New Chat</button>
+    <button class="btn btn-primary" id="btnNewChat">+ New Chat</button>
   </div>
 </div>
 
@@ -322,7 +297,8 @@
     <div class="icon">&#128233;</div>
     <h2>No Chat Queues Yet</h2>
     <p>Enter a Chat ID above and click "+ New Chat" to create a queue.<br>
-    Then use <code>CPQM_ID=&lt;n&gt;</code> in your Cursor session to start polling.</p>
+    Leave it blank for a random ID.<br>
+    Or just use <code>CPQM_ID=&lt;n&gt;</code> in Cursor — the chat auto-creates on first poll.</p>
   </div>
 </div>
 
@@ -330,7 +306,13 @@
 
 <script>
 const BASE = '';
-let chats = {};
+
+// Cached state per chat so we can diff instead of full re-render
+let cachedState = {};
+// Preserve input values across refreshes
+let inputValues = {};
+// Track collapsed state
+let collapsedPanels = new Set();
 
 function toast(msg) {
   const c = document.getElementById('toasts');
@@ -343,8 +325,13 @@ function toast(msg) {
 
 function fmtTime(iso) {
   if (!iso) return '';
-  const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function escHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 async function api(path, opts = {}) {
@@ -355,49 +342,195 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
+// ── Actions ─────────────────────────────────────────────────────
+
 async function createChat() {
   const input = document.getElementById('newChatId');
   const id = input.value.trim();
-  if (!id) return;
-  if (chats[id]) { toast(`Chat ${id} already exists`); return; }
-  await api(`/chats/${id}`, { method: 'POST' });
+
+  let result;
+  if (id) {
+    if (cachedState[id]) { toast('Chat ' + id + ' already exists'); return; }
+    result = await api('/chats/' + id, { method: 'POST' });
+  } else {
+    result = await api('/chats/new', { method: 'POST' });
+  }
+
   input.value = '';
-  toast(`Chat ${id} created`);
+  toast('Chat ' + result.chat_id + ' created');
   await refresh();
 }
 
-document.getElementById('newChatId').addEventListener('keydown', e => {
-  if (e.key === 'Enter') createChat();
-});
-
 async function enqueue(chatId) {
-  const input = document.getElementById(`msg-${chatId}`);
+  const input = document.getElementById('msg-' + chatId);
+  if (!input) return;
   const text = input.value.trim();
   if (!text) return;
-  await api(`/queue/${chatId}`, { method: 'POST', body: JSON.stringify({ message: text }) });
+  await api('/queue/' + chatId, { method: 'POST', body: JSON.stringify({ message: text }) });
   input.value = '';
-  toast(`Queued to Chat ${chatId}`);
+  inputValues[chatId] = '';
+  toast('Queued to Chat ' + chatId);
   await refresh();
 }
 
 async function endChat(chatId) {
-  if (!confirm(`End Chat ${chatId}? Cursor will stop polling this queue.`)) return;
-  await api(`/queue/${chatId}/end`, { method: 'POST' });
-  toast(`Chat ${chatId} ended`);
+  if (!confirm('End Chat ' + chatId + '? Cursor will stop polling this queue.')) return;
+  await api('/queue/' + chatId + '/end', { method: 'POST' });
+  toast('Chat ' + chatId + ' ended');
+  await refresh();
+}
+
+async function reopenChat(chatId) {
+  await api('/queue/' + chatId + '/reopen', { method: 'POST' });
+  toast('Chat ' + chatId + ' reopened');
   await refresh();
 }
 
 async function deleteChat(chatId) {
-  if (!confirm(`Delete Chat ${chatId}? All data will be lost.`)) return;
-  await api(`/chats/${chatId}`, { method: 'DELETE' });
-  delete chats[chatId];
-  toast(`Chat ${chatId} deleted`);
+  if (!confirm('Delete Chat ' + chatId + '? All data will be lost.')) return;
+  await api('/chats/' + chatId, { method: 'DELETE' });
+  delete cachedState[chatId];
+  delete inputValues[chatId];
+  collapsedPanels.delete(chatId);
+  toast('Chat ' + chatId + ' deleted');
   await refresh();
 }
 
+async function deletePendingMsg(chatId, messageId) {
+  await api('/queue/' + chatId + '/message/' + messageId, { method: 'DELETE' });
+  toast('Message deleted');
+  await refresh();
+}
+
+async function renameChat(oldId, newId) {
+  newId = newId.trim();
+  if (!newId || newId === oldId) return;
+  const result = await api('/chats/' + oldId + '/rename/' + newId, { method: 'PUT' });
+  if (result.ok) {
+    // Migrate local state
+    inputValues[newId] = inputValues[oldId] || '';
+    delete inputValues[oldId];
+    if (collapsedPanels.has(oldId)) {
+      collapsedPanels.delete(oldId);
+      collapsedPanels.add(newId);
+    }
+    delete cachedState[oldId];
+    toast('Renamed Chat ' + oldId + ' → ' + newId);
+  } else {
+    toast('Rename failed: ' + (result.reason || 'unknown error'));
+  }
+  await refresh();
+}
+
+function handleTextareaKey(event, chatId) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    enqueue(chatId);
+  }
+}
+
+function autoResizeTextarea(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
 function togglePanel(chatId) {
-  const panel = document.getElementById(`panel-${chatId}`);
-  if (panel) panel.classList.toggle('collapsed');
+  const panel = document.getElementById('panel-' + chatId);
+  if (!panel) return;
+  if (collapsedPanels.has(chatId)) {
+    collapsedPanels.delete(chatId);
+    panel.classList.remove('collapsed');
+  } else {
+    collapsedPanels.add(chatId);
+    panel.classList.add('collapsed');
+  }
+}
+
+// ── Saving input values before refresh ──────────────────────────
+
+function saveInputValues() {
+  document.querySelectorAll('textarea.message-input').forEach(el => {
+    const chatId = el.id.replace('msg-', '');
+    inputValues[chatId] = el.value;
+  });
+}
+
+// ── Rendering ───────────────────────────────────────────────────
+
+function buildPanelHTML(chatId, data) {
+  const isEnd = data.status === 'END';
+
+  const pendingHtml = data.pending.length > 0
+    ? data.pending.map(m =>
+        '<div class="msg-item"><div class="msg-text">' + escHtml(m.text) + '</div>' +
+        '<div class="msg-footer">' +
+          '<span class="timestamp">Queued ' + fmtTime(m.queued_at) + '</span>' +
+          '<button class="btn-delete-msg" onclick="deletePendingMsg(\'' + chatId + '\', ' + m.id + ')" title="Delete message">&#10005;</button>' +
+        '</div></div>'
+      ).join('')
+    : '<div class="msg-empty">No pending messages</div>';
+
+  const consumedHtml = data.consumed.length > 0
+    ? data.consumed.slice().reverse().map(m =>
+        '<div class="msg-item"><div class="msg-text">' + escHtml(m.text) + '</div>' +
+        '<div class="timestamp">Consumed ' + fmtTime(m.consumed_at) + '</div></div>'
+      ).join('')
+    : '<div class="msg-empty">Nothing consumed yet</div>';
+
+  const endSignal = isEnd
+    ? '<div class="msg-item end-signal">&#9940; END SIGNAL SENT</div>'
+    : '';
+
+  const savedValue = escHtml(inputValues[chatId] || '');
+
+  const controlBtns = isEnd
+    ? '<button class="btn btn-reopen" onclick="event.stopPropagation(); reopenChat(\'' + chatId + '\')">&#9888;&#65039; Reopen</button>'
+    : '<button class="btn btn-danger" onclick="event.stopPropagation(); endChat(\'' + chatId + '\')">&#128308; End</button>';
+
+  return '<div class="panel-header" onclick="togglePanel(\'' + chatId + '\')">' +
+    '<div class="panel-title">' +
+      '<span class="chevron">&#9660;</span>' +
+      'Chat ID: <input type="text" class="chat-id-editable" value="' + chatId + '"' +
+        ' onclick="event.stopPropagation()"' +
+        ' onkeydown="if(event.key===\'Enter\'){this.blur();}" ' +
+        ' onblur="renameChat(\'' + chatId + '\', this.value)">' +
+      '<span class="status-badge ' + (isEnd ? 'status-end' : 'status-active') + '">' + data.status + '</span>' +
+    '</div>' +
+    '<div class="panel-controls">' +
+      controlBtns +
+      '<button class="btn btn-ghost" onclick="event.stopPropagation(); deleteChat(\'' + chatId + '\')" title="Delete">&#128465;</button>' +
+    '</div>' +
+  '</div>' +
+  '<div class="panel-body">' +
+    '<div class="input-row">' +
+      '<textarea class="message-input" id="msg-' + chatId + '"' +
+        ' placeholder="Type a prompt for Cursor... (Shift+Enter for new line)"' +
+        ' rows="1"' +
+        (isEnd ? ' disabled' : '') +
+        ' onkeydown="handleTextareaKey(event, \'' + chatId + '\')"' +
+        ' oninput="autoResizeTextarea(this)">' + savedValue + '</textarea>' +
+      '<button class="btn btn-primary" onclick="enqueue(\'' + chatId + '\')"' +
+        (isEnd ? ' disabled' : '') + '>Queue</button>' +
+    '</div>' +
+    '<div class="columns">' +
+      '<div class="column">' +
+        '<h3>&#128203; Pending <span class="count">' + data.pending.length + '</span></h3>' +
+        '<div class="msg-list">' + pendingHtml + endSignal + '</div>' +
+      '</div>' +
+      '<div class="column">' +
+        '<h3>&#9989; Consumed <span class="count">' + data.consumed.length + '</span></h3>' +
+        '<div class="msg-list">' + consumedHtml + '</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function stateFingerprint(data) {
+  return JSON.stringify({
+    s: data.status,
+    p: data.pending.map(m => m.id),
+    c: data.consumed.map(m => m.id),
+  });
 }
 
 async function refresh() {
@@ -408,101 +541,83 @@ async function refresh() {
   if (chatList.length === 0) {
     empty.style.display = '';
     document.querySelectorAll('.chat-panel').forEach(el => el.remove());
+    cachedState = {};
     return;
   }
   empty.style.display = 'none';
 
-  const statusMap = {};
-  for (const c of chatList) {
-    const data = await api(`/queue/${c.chat_id}/status`);
-    statusMap[c.chat_id] = data;
-    chats[c.chat_id] = data;
+  // Save current input values before touching DOM
+  saveInputValues();
+
+  // Fetch all statuses in parallel
+  const statusPromises = chatList.map(c => api('/queue/' + c.chat_id + '/status'));
+  const statuses = await Promise.all(statusPromises);
+
+  const freshState = {};
+  for (let i = 0; i < chatList.length; i++) {
+    freshState[chatList[i].chat_id] = statuses[i];
   }
 
+  // Remove panels for deleted chats
   const currentIds = new Set(chatList.map(c => c.chat_id));
   document.querySelectorAll('.chat-panel').forEach(el => {
     const id = el.id.replace('panel-', '');
     if (!currentIds.has(id)) el.remove();
   });
 
+  // Create or update panels — only re-render if data actually changed
   for (const c of chatList) {
-    const data = statusMap[c.chat_id];
-    renderPanel(c.chat_id, data);
+    const chatId = c.chat_id;
+    const data = freshState[chatId];
+    const fp = stateFingerprint(data);
+    const panel = document.getElementById('panel-' + chatId);
+
+    if (panel && cachedState[chatId] === fp) {
+      // Nothing changed for this chat — skip DOM update entirely
+      continue;
+    }
+
+    const isEnd = data.status === 'END';
+    const isCollapsed = collapsedPanels.has(chatId);
+
+    // Check if the input is currently focused so we can restore focus
+    const activeEl = document.activeElement;
+    const inputWasFocused = activeEl && activeEl.id === 'msg-' + chatId;
+    const cursorPos = inputWasFocused ? activeEl.selectionStart : 0;
+
+    if (!panel) {
+      const newPanel = document.createElement('div');
+      newPanel.id = 'panel-' + chatId;
+      newPanel.className = 'chat-panel' + (isEnd ? ' ended' : '') + (isCollapsed ? ' collapsed' : '');
+      newPanel.innerHTML = buildPanelHTML(chatId, data);
+      container.appendChild(newPanel);
+    } else {
+      panel.className = 'chat-panel' + (isEnd ? ' ended' : '') + (isCollapsed ? ' collapsed' : '');
+      panel.innerHTML = buildPanelHTML(chatId, data);
+    }
+
+    // Restore focus and cursor position
+    if (inputWasFocused) {
+      const restoredInput = document.getElementById('msg-' + chatId);
+      if (restoredInput) {
+        restoredInput.focus();
+        restoredInput.setSelectionRange(cursorPos, cursorPos);
+      }
+    }
+
+    cachedState[chatId] = fp;
   }
 }
 
-function renderPanel(chatId, data) {
-  let panel = document.getElementById(`panel-${chatId}`);
-  const isEnd = data.status === 'END';
-  const isCollapsed = panel ? panel.classList.contains('collapsed') : false;
+// ── Event listeners ─────────────────────────────────────────────
 
-  if (!panel) {
-    panel = document.createElement('div');
-    panel.id = `panel-${chatId}`;
-    panel.className = 'chat-panel';
-    document.getElementById('app').appendChild(panel);
-  }
+document.getElementById('btnNewChat').addEventListener('click', createChat);
 
-  panel.className = `chat-panel${isEnd ? ' ended' : ''}${isCollapsed ? ' collapsed' : ''}`;
+document.getElementById('newChatId').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') createChat();
+});
 
-  const pendingHtml = data.pending.length > 0
-    ? data.pending.map(m => `
-        <div class="msg-item">
-          ${escHtml(m.text)}
-          <div class="timestamp">Queued ${fmtTime(m.queued_at)}</div>
-        </div>`).join('')
-    : '<div class="msg-empty">No pending messages</div>';
-
-  const consumedHtml = data.consumed.length > 0
-    ? data.consumed.slice().reverse().map(m => `
-        <div class="msg-item">
-          ${escHtml(m.text)}
-          <div class="timestamp">Consumed ${fmtTime(m.consumed_at)}</div>
-        </div>`).join('')
-    : '<div class="msg-empty">Nothing consumed yet</div>';
-
-  const endSignal = isEnd
-    ? '<div class="msg-item end-signal">&#9940; END SIGNAL SENT</div>'
-    : '';
-
-  panel.innerHTML = `
-    <div class="panel-header" onclick="togglePanel('${chatId}')">
-      <div class="panel-title">
-        <span class="chevron">&#9660;</span>
-        Chat ID: ${chatId}
-        <span class="status-badge ${isEnd ? 'status-end' : 'status-active'}">${data.status}</span>
-      </div>
-      <div class="panel-controls">
-        ${!isEnd ? `<button class="btn btn-danger" onclick="event.stopPropagation(); endChat('${chatId}')">&#128308; End</button>` : ''}
-        <button class="btn btn-ghost" onclick="event.stopPropagation(); deleteChat('${chatId}')" title="Delete">&#128465;</button>
-      </div>
-    </div>
-    <div class="panel-body">
-      <div class="input-row">
-        <input type="text" class="message-input" id="msg-${chatId}"
-               placeholder="Type a prompt for Cursor..."
-               ${isEnd ? 'disabled' : ''}
-               onkeydown="if(event.key==='Enter') enqueue('${chatId}')">
-        <button class="btn btn-primary" onclick="enqueue('${chatId}')" ${isEnd ? 'disabled' : ''}>Queue</button>
-      </div>
-      <div class="columns">
-        <div class="column">
-          <h3>&#128203; Pending <span class="count">${data.pending.length}</span></h3>
-          <div class="msg-list">${pendingHtml}${endSignal}</div>
-        </div>
-        <div class="column">
-          <h3>&#9989; Consumed <span class="count">${data.consumed.length}</span></h3>
-          <div class="msg-list">${consumedHtml}</div>
-        </div>
-      </div>
-    </div>`;
-}
-
-function escHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+// ── Start ───────────────────────────────────────────────────────
 
 refresh();
 setInterval(refresh, 3000);

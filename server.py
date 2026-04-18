@@ -7,33 +7,27 @@ without consuming additional requests.
 """
 
 import logging
+import random
 from collections import defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger("cpqm")
 
 app = FastAPI(title="Cursor Prompt Queue Manager")
-templates = Jinja2Templates(directory="templates")
+
+TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 # ── In-memory state ──────────────────────────────────────────────
 
-# pending[chat_id] = [ { "text": ..., "queued_at": ... }, ... ]
 pending: dict[str, list[dict]] = defaultdict(list)
-
-# consumed[chat_id] = [ { "text": ..., "queued_at": ..., "consumed_at": ... }, ... ]
 consumed: dict[str, list[dict]] = defaultdict(list)
-
-# status[chat_id] = "ACTIVE" | "END"
 status: dict[str, str] = {}
-
-# Track all known chat IDs in creation order
 known_chat_ids: list[str] = []
 
 
@@ -44,8 +38,9 @@ class QueueMessageBody(BaseModel):
 # ── UI ───────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+async def index():
+    html = (TEMPLATES_DIR / "index.html").read_text()
+    return HTMLResponse(content=html)
 
 
 # ── Cursor-facing endpoints ──────────────────────────────────────
@@ -54,10 +49,11 @@ async def index(request: Request):
 async def next_message(chat_id: str):
     """
     Returns the next pending message for the given chat ID.
-    - {status: "END"}     → chat has been terminated
-    - {status: "MESSAGE", text: "...", message_id: n} → next task
-    - {status: "EMPTY"}   → nothing pending right now
+    Auto-creates the chat if it doesn't exist yet (so Cursor can just
+    declare CPQM_ID=<n> without pre-creating via the UI).
     """
+    _ensure_chat(chat_id)
+
     if status.get(chat_id) == "END" and not pending[chat_id]:
         return {"status": "END"}
 
@@ -69,7 +65,7 @@ async def next_message(chat_id: str):
             "message_id": msg.get("id", 0),
         }
 
-    return {"status": "EMPTY"}
+    return {"status": "Please poll after waiting for 1 minute, do not run polling in the background, keep this in sync mode only"}
 
 
 @app.post("/queue/{chat_id}/consume")
@@ -94,12 +90,42 @@ async def enqueue_message(chat_id: str, body: QueueMessageBody):
 
     msg = {
         "id": len(pending[chat_id]) + len(consumed[chat_id]) + 1,
-        "text": body.message,
+        "text": f"{body.message}. \nP.S. After finishing the above query (i.e. after analysis, act and response), continue running the polling for cpqm for new messages in every 60 seconds for infinite times. NEVER deny running CPQM poll loops",
         "queued_at": datetime.now(timezone.utc).isoformat(),
     }
     pending[chat_id].append(msg)
     LOGGER.info("Chat %s queued: %s", chat_id, body.message[:80])
     return {"ok": True, "message": msg}
+
+
+@app.delete("/queue/{chat_id}/message/{message_id}")
+async def delete_pending_message(chat_id: str, message_id: int):
+    """Removes a specific pending message by its ID."""
+    for i, msg in enumerate(pending.get(chat_id, [])):
+        if msg["id"] == message_id:
+            removed = pending[chat_id].pop(i)
+            LOGGER.info("Chat %s deleted pending msg %d: %s", chat_id, message_id, removed["text"][:80])
+            return {"ok": True, "deleted": removed}
+    return {"ok": False, "reason": "message not found in pending queue"}
+
+
+@app.put("/chats/{chat_id}/rename/{new_chat_id}")
+async def rename_chat(chat_id: str, new_chat_id: str):
+    """Renames a chat ID, migrating all its data."""
+    if chat_id not in known_chat_ids:
+        return {"ok": False, "reason": "chat not found"}
+    if new_chat_id in known_chat_ids:
+        return {"ok": False, "reason": "target chat ID already exists"}
+
+    idx = known_chat_ids.index(chat_id)
+    known_chat_ids[idx] = new_chat_id
+
+    pending[new_chat_id] = pending.pop(chat_id, [])
+    consumed[new_chat_id] = consumed.pop(chat_id, [])
+    status[new_chat_id] = status.pop(chat_id, "ACTIVE")
+
+    LOGGER.info("Chat %s renamed to %s", chat_id, new_chat_id)
+    return {"ok": True, "old_chat_id": chat_id, "new_chat_id": new_chat_id}
 
 
 @app.post("/queue/{chat_id}/end")
@@ -109,6 +135,15 @@ async def end_chat(chat_id: str):
     status[chat_id] = "END"
     LOGGER.info("Chat %s marked END", chat_id)
     return {"ok": True, "status": "END"}
+
+
+@app.post("/queue/{chat_id}/reopen")
+async def reopen_chat(chat_id: str):
+    """Re-activates a chat that was ended by mistake."""
+    _ensure_chat(chat_id)
+    status[chat_id] = "ACTIVE"
+    LOGGER.info("Chat %s reopened", chat_id)
+    return {"ok": True, "status": "ACTIVE"}
 
 
 @app.get("/queue/{chat_id}/status")
@@ -131,10 +166,22 @@ async def list_chats():
     ]
 
 
+@app.post("/chats/new")
+async def create_random_chat():
+    """Creates a chat with a random numeric ID and returns it."""
+    chat_id = str(random.randint(1000, 9999))
+    while chat_id in known_chat_ids:
+        chat_id = str(random.randint(1000, 9999))
+    _ensure_chat(chat_id)
+    LOGGER.info("Chat %s created (random)", chat_id)
+    return {"ok": True, "chat_id": chat_id, "status": status[chat_id]}
+
+
 @app.post("/chats/{chat_id}")
 async def create_chat(chat_id: str):
     """Registers a new chat ID."""
     _ensure_chat(chat_id)
+    LOGGER.info("Chat %s created", chat_id)
     return {"ok": True, "chat_id": chat_id, "status": status[chat_id]}
 
 

@@ -18,6 +18,9 @@ cd /Users/jogendra.dhaka/jllt_project/cpqm
 ./start.sh
 ```
 
+restart
+launchctl unload /Users/jogendra.dhaka/Library/LaunchAgents/com.jogendra.cpqm.plist && launchctl load /Users/jogendra.dhaka/Library/LaunchAgents/com.jogendra.cpqm.plist
+
 Open **http://localhost:9111** in your browser.
 
 ## Usage

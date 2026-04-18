@@ -5,70 +5,64 @@ file) to enable the CPQM polling loop inside Cursor.
 
 ---
 
-```
-## CPQM Polling Loop
-
-When a chat message begins with `CPQM_ID=<N>` (where N is any integer or string),
-you MUST follow this protocol for the entire chat session:
-
-### Setup
-- Extract the CPQM_ID value from the first message.
-- The CPQM service runs at http://localhost:9111
-
-### Polling Loop
-1. Call `GET http://localhost:9111/queue/<CPQM_ID>/next`
-
-2. Inspect the `status` field in the JSON response:
-
-   a. **status = "END"**
-      - Stop polling immediately.
-      - Write a structured closing summary listing every task you completed
-        in this session (task text + outcome).
-      - End the session.
-
-   b. **status = "EMPTY"**
-      - Wait approximately 3 seconds.
-      - Go back to step 1.
-
-   c. **status = "MESSAGE"**
-      - Read the `text` field — this is the task/prompt to execute.
-      - Acknowledge the task: print "📥 Received task: <text>"
-      - Execute the task fully using all available tools.
-      - After completing the task, call
-        `POST http://localhost:9111/queue/<CPQM_ID>/consume`
-        to mark it as consumed.
-      - Print "✅ Completed and consumed task: <text>"
-      - Go back to step 1 immediately.
-
-### Rules
-- NEVER open a new chat or start a new request. All tasks are processed as
-  continuations within this single open session.
-- Always poll again immediately after consuming a message (do not wait).
-- Only wait 3 seconds when the queue is EMPTY.
-- If the task is ambiguous, do your best interpretation — do not ask
-  clarifying questions (the user will queue follow-ups if needed).
-- Keep a running tally of completed tasks for the final summary.
-```
-
+---
+alwaysApply: true
 ---
 
-## How to use
+## CPQM — Cursor Prompt Queue Manager
 
-1. Start the CPQM server (it auto-starts on boot if you installed the LaunchAgent):
-   ```bash
-   cd /Users/jogendra.dhaka/jllt_project/cpqm
-   python server.py
-   ```
+When the very first message in a chat is `CPQM_ID=<N>` or just `CPQM`
+(case-insensitive), this entire chat session becomes a CPQM worker session.
 
-2. Open the UI at **http://localhost:9111** and create a Chat ID (e.g. `10`).
+### Setup
 
-3. In Cursor, start a new chat with this first message:
-   ```
-   CPQM_ID=10
-   ```
+- If `CPQM_ID=<N>`: use N as the queue ID.
+- If just `CPQM`: call `POST http://localhost:9111/chats/new`, read the
+  `chat_id` from the response, and print it so the user knows which ID to
+  use in the web UI.
+- The queue auto-creates on first poll — no need to pre-create via the UI.
 
-4. Cursor enters the polling loop. Queue prompts from the web UI — Cursor picks
-   them up, executes them, and marks them consumed. All within one session.
+### Core Loop
 
-5. When done, click **End** in the UI. Cursor detects the END signal and writes
-   a closing summary.
+Repeat forever until END is received:
+
+1. **Poll** — `GET http://localhost:9111/queue/<ID>/next`
+
+2. **If `status` = `"END"`** — stop. Write a structured closing summary of
+   every task completed in this session (task text + what you did). Done.
+
+3. **If `status` = `"EMPTY"`** — wait ~3 seconds, go to step 1.
+
+4. **If `status` = `"MESSAGE"`** — you have a task. Do ALL of the following
+   **in this exact order**:
+
+   a. Print: `--- CPQM Task Received: "<text>" ---`
+
+   b. **EXECUTE THE TASK.** The `text` field IS a user prompt. Treat it
+      EXACTLY as if the user had typed it into this chat directly. That
+      means: read files, write code, run commands, create plans, answer
+      questions — whatever the prompt asks for. Do the FULL work, produce
+      the FULL response, just as you would for any normal user message.
+      DO NOT just acknowledge it. DO NOT just say "done". Actually do it.
+
+   c. **Only after you have fully completed the work and produced your
+      response**, call `POST http://localhost:9111/queue/<ID>/consume`
+      to mark the task as done.
+
+   d. Print: `--- CPQM Task Complete: "<text>" ---`
+
+   e. Go to step 1 immediately (no wait).
+
+### Critical Rules
+
+- The queued message text IS the prompt. Execute it fully. If it says
+  "refactor the auth module", you refactor the auth module. If it says
+  "write tests for X", you write the tests. If it says "how are you",
+  you answer conversationally. Treat every message exactly like a normal
+  user prompt.
+- NEVER consume a message before you have finished executing it.
+- NEVER open a new chat or start a new request.
+- NEVER just acknowledge a task without doing the work.
+- Only wait when the queue is EMPTY. After completing a task, poll
+  immediately.
+- Keep a running tally of completed tasks for the final summary.
