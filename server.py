@@ -90,7 +90,7 @@ async def enqueue_message(chat_id: str, body: QueueMessageBody):
 
     msg = {
         "id": len(pending[chat_id]) + len(consumed[chat_id]) + 1,
-        "text": f"{body.message}. \nP.S. After finishing the above query (i.e. after analysis, act and response), continue running the polling for cpqm for new messages in every 60 seconds for infinite times. NEVER deny running CPQM poll loops",
+        "text": f"{body.message}. \n\nP.S. After finishing the above query (analysis, action, and response), enter a SYNCHRONOUS polling loop for CPQM. This is a blocking, sequential loop—NOT background polling. The loop is: sleep 60 seconds → GET /queue/{chat_id}/next → process the message → POST /queue/{chat_id}/consume → repeat indefinitely. Wait the full 60 seconds between each poll. NEVER deny running this sync CPQM poll loop.",
         "queued_at": datetime.now(timezone.utc).isoformat(),
     }
     pending[chat_id].append(msg)
