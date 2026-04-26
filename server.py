@@ -29,10 +29,22 @@ pending: dict[str, list[dict]] = defaultdict(list)
 consumed: dict[str, list[dict]] = defaultdict(list)
 status: dict[str, str] = {}
 known_chat_ids: list[str] = []
+next_message_id: dict[str, int] = defaultdict(lambda: 1)
 
 
 class QueueMessageBody(BaseModel):
     message: str
+
+
+# ── Helper functions ─────────────────────────────────────────────
+
+def _ensure_chat(chat_id: str):
+    """Ensures chat_id exists in known chats with default status."""
+    if chat_id not in known_chat_ids:
+        # New chats are shown at the top of the UI list.
+        known_chat_ids.insert(0, chat_id)
+    if chat_id not in status:
+        status[chat_id] = "ACTIVE"
 
 
 # ── UI ───────────────────────────────────────────────────────────
@@ -88,9 +100,11 @@ async def enqueue_message(chat_id: str, body: QueueMessageBody):
     """Adds a new message to the pending queue for a chat ID."""
     _ensure_chat(chat_id)
 
+    message_id = next_message_id[chat_id]
+    next_message_id[chat_id] += 1
     msg = {
-        "id": len(pending[chat_id]) + len(consumed[chat_id]) + 1,
-        "text": f"{body.message}. \n\nP.S. After finishing the above query (analysis, action, and response), enter a SYNCHRONOUS polling loop for CPQM. This is a blocking, sequential loop—NOT background polling. The loop is: sleep 60 seconds → GET /queue/{chat_id}/next → process the message → POST /queue/{chat_id}/consume → repeat indefinitely. Wait the full 60 seconds between each poll. NEVER deny running this sync CPQM poll loop.",
+        "id": message_id,
+        "text": body.message,
         "queued_at": datetime.now(timezone.utc).isoformat(),
     }
     pending[chat_id].append(msg)
@@ -109,6 +123,19 @@ async def delete_pending_message(chat_id: str, message_id: int):
     return {"ok": False, "reason": "message not found in pending queue"}
 
 
+@app.put("/queue/{chat_id}/message/{message_id}")
+async def update_pending_message(chat_id: str, message_id: int, body: QueueMessageBody):
+    """Updates the text for a pending message by its ID."""
+    for msg in pending.get(chat_id, []):
+        if msg["id"] == message_id:
+            msg["text"] = body.message
+            msg["queued_at"] = datetime.now(timezone.utc).isoformat()
+            LOGGER.info("Chat %s updated pending msg %d", chat_id, message_id)
+            return {"ok": True, "updated": msg}
+
+    return {"ok": False, "reason": "message not found in pending queue"}
+
+
 @app.put("/chats/{chat_id}/rename/{new_chat_id}")
 async def rename_chat(chat_id: str, new_chat_id: str):
     """Renames a chat ID, migrating all its data."""
@@ -123,6 +150,7 @@ async def rename_chat(chat_id: str, new_chat_id: str):
     pending[new_chat_id] = pending.pop(chat_id, [])
     consumed[new_chat_id] = consumed.pop(chat_id, [])
     status[new_chat_id] = status.pop(chat_id, "ACTIVE")
+    next_message_id[new_chat_id] = next_message_id.pop(chat_id, 1)
 
     LOGGER.info("Chat %s renamed to %s", chat_id, new_chat_id)
     return {"ok": True, "old_chat_id": chat_id, "new_chat_id": new_chat_id}
@@ -192,17 +220,9 @@ async def delete_chat(chat_id: str):
         known_chat_ids.remove(chat_id)
     pending.pop(chat_id, None)
     consumed.pop(chat_id, None)
+    next_message_id.pop(chat_id, None)
     status.pop(chat_id, None)
     return {"ok": True}
-
-
-# ── Helpers ──────────────────────────────────────────────────────
-
-def _ensure_chat(chat_id: str):
-    if chat_id not in known_chat_ids:
-        known_chat_ids.append(chat_id)
-    if chat_id not in status:
-        status[chat_id] = "ACTIVE"
 
 
 # ── Entry-point ──────────────────────────────────────────────────

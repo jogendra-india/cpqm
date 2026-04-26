@@ -225,6 +225,12 @@
 
     .msg-item .msg-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
     .msg-item .timestamp { font-size: 11px; color: var(--text-muted); }
+    .msg-item .msg-text.pending-message-editable {
+      cursor: text;
+    }
+    .msg-item .msg-text.pending-message-editable:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
     .msg-item .btn-delete-msg {
       background: none;
       border: none;
@@ -240,6 +246,22 @@
     .msg-item .btn-delete-msg:hover { color: var(--red); background: var(--red-dim); }
     .msg-item.end-signal { border-color: var(--red); color: var(--red); font-weight: 600; text-align: center; }
     .msg-item .msg-text { white-space: pre-wrap; }
+    .msg-inline-editor {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--accent);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: var(--font-mono);
+      line-height: 1.5;
+      resize: vertical;
+      min-height: 40px;
+      max-height: 220px;
+      white-space: pre-wrap;
+      outline: none;
+    }
     .msg-empty { color: var(--text-muted); font-size: 13px; font-style: italic; padding: 10px; text-align: center; }
 
     .chat-id-editable {
@@ -334,6 +356,15 @@ function escHtml(str) {
   return div.innerHTML;
 }
 
+function escAttr(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(BASE + path, {
     headers: { 'Content-Type': 'application/json' },
@@ -374,7 +405,6 @@ async function enqueue(chatId) {
 }
 
 async function endChat(chatId) {
-  if (!confirm('End Chat ' + chatId + '? Cursor will stop polling this queue.')) return;
   await api('/queue/' + chatId + '/end', { method: 'POST' });
   toast('Chat ' + chatId + ' ended');
   await refresh();
@@ -387,7 +417,6 @@ async function reopenChat(chatId) {
 }
 
 async function deleteChat(chatId) {
-  if (!confirm('Delete Chat ' + chatId + '? All data will be lost.')) return;
   await api('/chats/' + chatId, { method: 'DELETE' });
   delete cachedState[chatId];
   delete inputValues[chatId];
@@ -397,9 +426,23 @@ async function deleteChat(chatId) {
 }
 
 async function deletePendingMsg(chatId, messageId) {
-  await api('/queue/' + chatId + '/message/' + messageId, { method: 'DELETE' });
+  const result = await api('/queue/' + chatId + '/message/' + messageId, { method: 'DELETE' });
+  if (!result.ok) {
+    toast('Delete failed: ' + (result.reason || 'unknown error'));
+    return;
+  }
   toast('Message deleted');
   await refresh();
+}
+
+async function updatePendingMsg(chatId, messageId, text) {
+  const result = await api('/queue/' + chatId + '/message/' + messageId, {
+    method: 'PUT',
+    body: JSON.stringify({ message: text })
+  });
+  if (!result.ok) {
+    throw new Error(result.reason || 'Failed to update message');
+  }
 }
 
 async function renameChat(oldId, newId) {
@@ -422,6 +465,16 @@ async function renameChat(oldId, newId) {
   await refresh();
 }
 
+function renameChatFromInput(input) {
+  const oldId = input.dataset.chatId;
+  const newId = input.value;
+  if (!oldId || oldId === newId) {
+    input.value = oldId;
+    return;
+  }
+  renameChat(oldId, newId);
+}
+
 function handleTextareaKey(event, chatId) {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
@@ -434,7 +487,15 @@ function autoResizeTextarea(el) {
   el.style.height = Math.min(el.scrollHeight, 200) + 'px';
 }
 
-function togglePanel(chatId) {
+function togglePanel(chatId, event) {
+  if (event) {
+    const isButton = event.target.closest('button[data-action], input.chat-id-editable');
+    if (isButton) {
+      event.stopPropagation();
+      return;
+    }
+  }
+  
   const panel = document.getElementById('panel-' + chatId);
   if (!panel) return;
   if (collapsedPanels.has(chatId)) {
@@ -459,13 +520,14 @@ function saveInputValues() {
 
 function buildPanelHTML(chatId, data) {
   const isEnd = data.status === 'END';
+  const safeChatId = escAttr(chatId);
 
   const pendingHtml = data.pending.length > 0
     ? data.pending.map(m =>
-        '<div class="msg-item"><div class="msg-text">' + escHtml(m.text) + '</div>' +
+        '<div class="msg-item"><div class="msg-text pending-message-editable" data-chat-id="' + safeChatId + '" data-message-id="' + m.id + '" title="Double click to edit message inline">' + escHtml(m.text) + '</div>' +
         '<div class="msg-footer">' +
           '<span class="timestamp">Queued ' + fmtTime(m.queued_at) + '</span>' +
-          '<button class="btn-delete-msg" onclick="deletePendingMsg(\'' + chatId + '\', ' + m.id + ')" title="Delete message">&#10005;</button>' +
+          '<button class="btn-delete-msg" type="button" onclick="event.stopPropagation(); deletePendingMsg(\'' + chatId + '\', ' + m.id + ');" title="Delete message">&#10005;</button>' +
         '</div></div>'
       ).join('')
     : '<div class="msg-empty">No pending messages</div>';
@@ -484,21 +546,21 @@ function buildPanelHTML(chatId, data) {
   const savedValue = escHtml(inputValues[chatId] || '');
 
   const controlBtns = isEnd
-    ? '<button class="btn btn-reopen" onclick="event.stopPropagation(); reopenChat(\'' + chatId + '\')">&#9888;&#65039; Reopen</button>'
-    : '<button class="btn btn-danger" onclick="event.stopPropagation(); endChat(\'' + chatId + '\')">&#128308; End</button>';
+    ? '<button class="btn btn-reopen" type="button" onclick="event.stopPropagation(); reopenChat(\'' + chatId + '\');">&#9888;&#65039; Reopen</button>'
+    : '<button class="btn btn-danger" type="button" onclick="event.stopPropagation(); endChat(\'' + chatId + '\');">&#128308; End</button>';
 
-  return '<div class="panel-header" onclick="togglePanel(\'' + chatId + '\')">' +
+  return '<div class="panel-header" onclick="togglePanel(\'' + chatId + '\', event)">' +
     '<div class="panel-title">' +
       '<span class="chevron">&#9660;</span>' +
-      'Chat ID: <input type="text" class="chat-id-editable" value="' + chatId + '"' +
-        ' onclick="event.stopPropagation()"' +
-        ' onkeydown="if(event.key===\'Enter\'){this.blur();}" ' +
-        ' onblur="renameChat(\'' + chatId + '\', this.value)">' +
+      'Chat ID: <input type="text" class="chat-id-editable" data-chat-id="' + safeChatId + '" value="' + safeChatId + '"' +
+        ' onclick="event.stopPropagation();"' +
+        ' onkeydown="if(event.key===\'Enter\'){this.blur();}" ondblclick="this.select();" ' +
+        ' onblur="renameChatFromInput(this)">' +
       '<span class="status-badge ' + (isEnd ? 'status-end' : 'status-active') + '">' + data.status + '</span>' +
     '</div>' +
     '<div class="panel-controls">' +
       controlBtns +
-      '<button class="btn btn-ghost" onclick="event.stopPropagation(); deleteChat(\'' + chatId + '\')" title="Delete">&#128465;</button>' +
+      '<button class="btn btn-ghost" type="button" onclick="event.stopPropagation(); deleteChat(\'' + chatId + '\');" title="Delete">&#128465;</button>' +
     '</div>' +
   '</div>' +
   '<div class="panel-body">' +
@@ -528,8 +590,110 @@ function buildPanelHTML(chatId, data) {
 function stateFingerprint(data) {
   return JSON.stringify({
     s: data.status,
-    p: data.pending.map(m => m.id),
-    c: data.consumed.map(m => m.id),
+    p: data.pending.map(m => m.id + '|' + (m.text || '')),
+    c: data.consumed.map(m => m.id + '|' + (m.text || '')),
+  });
+}
+
+function beginPendingMessageEdit(targetEl) {
+  if (!targetEl || targetEl.classList.contains('editing')) {
+    return;
+  }
+
+  const chatId = targetEl.dataset.chatId;
+  const messageId = Number(targetEl.dataset.messageId);
+  if (!chatId || Number.isNaN(messageId)) {
+    return;
+  }
+
+  const footer = targetEl.nextElementSibling;
+  const originalText = targetEl.textContent || '';
+  const editor = document.createElement('textarea');
+
+  editor.className = 'msg-inline-editor';
+  editor.value = originalText;
+  targetEl.style.display = 'none';
+  targetEl.classList.add('editing');
+
+  if (footer && footer.parentNode) {
+    footer.parentNode.insertBefore(editor, footer);
+  } else {
+    targetEl.parentNode.appendChild(editor);
+  }
+
+  let closing = false;
+  const finalize = async (save) => {
+    if (closing) return;
+    closing = true;
+
+    const nextText = editor.value;
+    editor.remove();
+    targetEl.style.display = '';
+    targetEl.classList.remove('editing');
+
+    if (!save || nextText === originalText) {
+      targetEl.textContent = originalText;
+      return;
+    }
+
+    if (!nextText.trim()) {
+      toast('Message cannot be empty');
+      targetEl.textContent = originalText;
+      return;
+    }
+
+    try {
+      await updatePendingMsg(chatId, messageId, nextText);
+      toast('Message updated');
+      await refresh();
+    } catch (err) {
+      targetEl.textContent = originalText;
+      toast('Failed to update message: ' + err.message);
+      await refresh();
+    }
+  };
+
+  const scheduleFinalize = (save) => {
+    if (closing) return;
+    void finalize(save);
+  };
+
+  editor.addEventListener('input', () => autoResizeTextarea(editor));
+  editor.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void finalize(true);
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      scheduleFinalize(false);
+    }
+  });
+  editor.addEventListener('blur', () => scheduleFinalize(true));
+
+  autoResizeTextarea(editor);
+  editor.focus();
+  editor.setSelectionRange(editor.value.length, editor.value.length);
+}
+
+function attachActionDelegates() {
+  const appRoot = document.getElementById('app');
+  if (!appRoot) return;
+
+  appRoot.addEventListener('dblclick', (event) => {
+    const editable = event.target.closest('.pending-message-editable');
+    if (!editable) {
+      return;
+    }
+
+    const panel = editable.closest('.chat-panel');
+    if (panel && panel.classList.contains('ended')) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    beginPendingMessageEdit(editable);
   });
 }
 
@@ -570,9 +734,20 @@ async function refresh() {
     const chatId = c.chat_id;
     const data = freshState[chatId];
     const fp = stateFingerprint(data);
-    const panel = document.getElementById('panel-' + chatId);
+    let panel = document.getElementById('panel-' + chatId);
+    const activeEl = document.activeElement;
+    const inputWasFocused = activeEl && activeEl.id === 'msg-' + chatId;
+    const cursorPos = inputWasFocused ? activeEl.selectionStart : 0;
 
     if (panel && cachedState[chatId] === fp) {
+      container.appendChild(panel);
+      if (inputWasFocused) {
+        const restoredInput = document.getElementById('msg-' + chatId);
+        if (restoredInput) {
+          restoredInput.focus();
+          restoredInput.setSelectionRange(cursorPos, cursorPos);
+        }
+      }
       // Nothing changed for this chat — skip DOM update entirely
       continue;
     }
@@ -580,21 +755,17 @@ async function refresh() {
     const isEnd = data.status === 'END';
     const isCollapsed = collapsedPanels.has(chatId);
 
-    // Check if the input is currently focused so we can restore focus
-    const activeEl = document.activeElement;
-    const inputWasFocused = activeEl && activeEl.id === 'msg-' + chatId;
-    const cursorPos = inputWasFocused ? activeEl.selectionStart : 0;
-
     if (!panel) {
-      const newPanel = document.createElement('div');
-      newPanel.id = 'panel-' + chatId;
-      newPanel.className = 'chat-panel' + (isEnd ? ' ended' : '') + (isCollapsed ? ' collapsed' : '');
-      newPanel.innerHTML = buildPanelHTML(chatId, data);
-      container.appendChild(newPanel);
+      panel = document.createElement('div');
+      panel.id = 'panel-' + chatId;
+      panel.className = 'chat-panel' + (isEnd ? ' ended' : '') + (isCollapsed ? ' collapsed' : '');
+      panel.innerHTML = buildPanelHTML(chatId, data);
     } else {
       panel.className = 'chat-panel' + (isEnd ? ' ended' : '') + (isCollapsed ? ' collapsed' : '');
       panel.innerHTML = buildPanelHTML(chatId, data);
     }
+
+    container.appendChild(panel);
 
     // Restore focus and cursor position
     if (inputWasFocused) {
@@ -619,6 +790,7 @@ document.getElementById('newChatId').addEventListener('keydown', function(e) {
 
 // ── Start ───────────────────────────────────────────────────────
 
+attachActionDelegates();
 refresh();
 setInterval(refresh, 3000);
 </script>
