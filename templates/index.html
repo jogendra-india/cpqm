@@ -802,5 +802,14 @@ refresh();
 setInterval(refresh, 3000);
 </script>
 
+<script>
+// Workaround for VS Code Webview swallowing Cmd+V inside iframes
+window.addEventListener("keydown", function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
+        document.execCommand("paste");
+    }
+});
+</script>
+
 </body>
 </html>
