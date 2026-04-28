@@ -738,7 +738,8 @@ async function refresh() {
       const activeEl = document.activeElement;
       
       // Prevent refreshing if an inline editor is currently active in this panel
-      if (panel && panel.querySelector('.msg-inline-editor')) {
+      // or if the chat ID is currently being edited.
+      if (panel && (panel.querySelector('.msg-inline-editor') || panel.querySelector('.chat-id-editable:focus'))) {
         continue;
       }
       
