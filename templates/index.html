@@ -729,15 +729,21 @@ async function refresh() {
     if (!currentIds.has(id)) el.remove();
   });
 
-  // Create or update panels — only re-render if data actually changed
-  for (const c of chatList) {
-    const chatId = c.chat_id;
-    const data = freshState[chatId];
-    const fp = stateFingerprint(data);
-    let panel = document.getElementById('panel-' + chatId);
-    const activeEl = document.activeElement;
-    const inputWasFocused = activeEl && activeEl.id === 'msg-' + chatId;
-    const cursorPos = inputWasFocused ? activeEl.selectionStart : 0;
+    // Create or update panels — only re-render if data actually changed
+    for (const c of chatList) {
+      const chatId = c.chat_id;
+      const data = freshState[chatId];
+      const fp = stateFingerprint(data);
+      let panel = document.getElementById('panel-' + chatId);
+      const activeEl = document.activeElement;
+      
+      // Prevent refreshing if an inline editor is currently active in this panel
+      if (panel && panel.querySelector('.msg-inline-editor')) {
+        continue;
+      }
+      
+      const inputWasFocused = activeEl && activeEl.id === 'msg-' + chatId;
+      const cursorPos = inputWasFocused ? activeEl.selectionStart : 0;
 
     if (panel && cachedState[chatId] === fp) {
       container.appendChild(panel);
