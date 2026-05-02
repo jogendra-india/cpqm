@@ -51,7 +51,8 @@ Cursor polls GET /queue/<id>/next
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/queue/<chat_id>/next` | GET | Returns next pending message or EMPTY/END status |
+| `/queue/<chat_id>/next` | GET | Next message, `END`, or `EMPTY` with `wait_seconds` (per-chat poll spacing) |
+| `/chats/<chat_id>/poll-intervals` | PUT | `{"selected_seconds":[30,120,...]}` — optional gaps (30s–5m); none checked → 60s default; P.S. on new queue items uses effective wait |
 | `/queue/<chat_id>` | POST | Queue a new message `{"message": "..."}` |
 | `/queue/<chat_id>/consume` | POST | Move top pending message to consumed |
 | `/queue/<chat_id>/end` | POST | Signal END — Cursor stops polling |

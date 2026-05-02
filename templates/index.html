@@ -167,7 +167,37 @@
 
     .panel-body { padding: 20px; }
 
-    .input-row { display: flex; gap: 8px; margin-bottom: 20px; align-items: flex-end; }
+    .input-row { display: flex; gap: 8px; margin-bottom: 12px; align-items: flex-end; }
+
+    .poll-interval-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 14px;
+      margin-bottom: 16px;
+      padding: 10px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .poll-interval-row .poll-title { font-weight: 600; color: var(--text); margin-right: 4px; }
+    .poll-interval-row label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      color: var(--text);
+      user-select: none;
+    }
+    .poll-interval-row input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+    .poll-interval-row .poll-effective {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+    }
 
     .message-input {
       flex: 1;
@@ -392,6 +422,34 @@ async function createChat() {
   await refresh();
 }
 
+function pollIntervalLabel(sec) {
+  if (sec === 30) return '30 seconds';
+  if (sec === 120) return '2 minutes';
+  if (sec === 180) return '3 minutes';
+  if (sec === 240) return '4 minutes';
+  if (sec === 300) return '5 minutes';
+  return sec + 's';
+}
+
+async function savePollSelections(chatId) {
+  const panel = document.getElementById('panel-' + chatId);
+  if (!panel) return;
+  const checked = Array.from(panel.querySelectorAll('input.poll-interval-cb:checked')).map(cb => Number(cb.value));
+  try {
+    const result = await api('/chats/' + chatId + '/poll-intervals', {
+      method: 'PUT',
+      body: JSON.stringify({ selected_seconds: checked }),
+    });
+    if (!result.ok) {
+      toast('Poll interval save failed');
+      return;
+    }
+    await refresh();
+  } catch (e) {
+    toast('Poll interval save failed: ' + e.message);
+  }
+}
+
 async function enqueue(chatId) {
   const input = document.getElementById('msg-' + chatId);
   if (!input) return;
@@ -545,6 +603,26 @@ function buildPanelHTML(chatId, data) {
 
   const savedValue = escHtml(inputValues[chatId] || '');
 
+  const selected = data.poll_selected_seconds || [];
+  const selectedSet = new Set(selected);
+  const choices = data.poll_interval_choices_seconds || [30, 120, 180, 240, 300];
+  const effective = data.effective_poll_wait_seconds != null ? data.effective_poll_wait_seconds : 60;
+
+  const pollRow =
+    '<div class="poll-interval-row" onclick="event.stopPropagation();">' +
+    '<span class="poll-title">Worker wait between polls</span>' +
+    choices.map(function (sec) {
+      const id = 'poll-' + chatId + '-' + sec;
+      const ck = selectedSet.has(sec) ? ' checked' : '';
+      return '<label for="' + id + '">' +
+        '<input type="checkbox" class="poll-interval-cb" id="' + id + '" value="' + sec + '"' + ck +
+        ' onchange="savePollSelections(\'' + chatId + '\')">' +
+        pollIntervalLabel(sec) +
+        '</label>';
+    }).join('') +
+    '<span class="poll-effective">effective: ' + effective + 's (default 60 if none checked)</span>' +
+    '</div>';
+
   const controlBtns = isEnd
     ? '<button class="btn btn-reopen" type="button" onclick="event.stopPropagation(); reopenChat(\'' + chatId + '\');">&#9888;&#65039; Reopen</button>'
     : '<button class="btn btn-danger" type="button" onclick="event.stopPropagation(); endChat(\'' + chatId + '\');">&#128308; End</button>';
@@ -574,6 +652,7 @@ function buildPanelHTML(chatId, data) {
       '<button class="btn btn-primary" onclick="enqueue(\'' + chatId + '\')"' +
         (isEnd ? ' disabled' : '') + '>Queue</button>' +
     '</div>' +
+    pollRow +
     '<div class="columns">' +
       '<div class="column">' +
         '<h3>&#128203; Pending <span class="count">' + data.pending.length + '</span></h3>' +
@@ -588,10 +667,12 @@ function buildPanelHTML(chatId, data) {
 }
 
 function stateFingerprint(data) {
+  const pollKey = (data.poll_selected_seconds || []).slice().sort(function (a, b) { return a - b; }).join(',');
   return JSON.stringify({
     s: data.status,
     p: data.pending.map(m => m.id + '|' + (m.text || '')),
     c: data.consumed.map(m => m.id + '|' + (m.text || '')),
+    w: (data.effective_poll_wait_seconds != null ? data.effective_poll_wait_seconds : '') + '|' + pollKey,
   });
 }
 
@@ -742,9 +823,13 @@ async function refresh() {
       if (panel && (panel.querySelector('.msg-inline-editor') || panel.querySelector('.chat-id-editable:focus'))) {
         continue;
       }
+      if (panel && panel.querySelector('input.poll-interval-cb:focus')) {
+        continue;
+      }
       
       const inputWasFocused = activeEl && activeEl.id === 'msg-' + chatId;
-      const cursorPos = inputWasFocused ? activeEl.selectionStart : 0;
+      const cursorStart = inputWasFocused ? activeEl.selectionStart : 0;
+      const cursorEnd = inputWasFocused ? activeEl.selectionEnd : 0;
 
     if (panel && cachedState[chatId] === fp) {
       container.appendChild(panel);
@@ -752,7 +837,7 @@ async function refresh() {
         const restoredInput = document.getElementById('msg-' + chatId);
         if (restoredInput) {
           restoredInput.focus();
-          restoredInput.setSelectionRange(cursorPos, cursorPos);
+          restoredInput.setSelectionRange(cursorStart, cursorEnd);
         }
       }
       // Nothing changed for this chat — skip DOM update entirely
@@ -779,7 +864,7 @@ async function refresh() {
       const restoredInput = document.getElementById('msg-' + chatId);
       if (restoredInput) {
         restoredInput.focus();
-        restoredInput.setSelectionRange(cursorPos, cursorPos);
+        restoredInput.setSelectionRange(cursorStart, cursorEnd);
       }
     }
 
@@ -805,8 +890,24 @@ setInterval(refresh, 3000);
 <script>
 // Workaround for VS Code Webview swallowing Cmd+V inside iframes
 window.addEventListener("keydown", function(e) {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
-        document.execCommand("paste");
+    if (e.ctrlKey || e.metaKey) {
+        var key = e.key.toLowerCase();
+        if (key === "v") {
+            document.execCommand("paste");
+            e.preventDefault();
+        } else if (key === "c") {
+            document.execCommand("copy");
+            e.preventDefault();
+        } else if (key === "x") {
+            document.execCommand("cut");
+            e.preventDefault();
+        } else if (key === "a") {
+            document.execCommand("selectAll");
+            e.preventDefault();
+        } else if (key === "z") {
+            document.execCommand("undo");
+            e.preventDefault();
+        }
     }
 });
 </script>
