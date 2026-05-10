@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CPQM — Cursor Prompt Queue Manager</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-2: #1c2129;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-hover: #79c0ff;
+      --green: #3fb950;
+      --green-dim: #1a3a2a;
+      --red: #f85149;
+      --red-dim: #3d1a1a;
+      --orange: #d29922;
+      --orange-dim: #3d2e0a;
+      --radius: 8px;
+      --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header h1 .logo { font-size: 22px; color: var(--accent); }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .new-chat-input {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      width: 120px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .new-chat-input:focus { border-color: var(--accent); }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: transparent;
+      color: var(--text);
+    }
+
+    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-danger { color: var(--red); border-color: var(--red); }
+    .btn-danger:hover { background: var(--red-dim); }
+
+    .btn-reopen { color: var(--orange); border-color: var(--orange); }
+    .btn-reopen:hover { background: var(--orange-dim); }
+
+    .btn-ghost { color: var(--text-muted); border-color: var(--border); }
+    .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
+
+    .container { max-width: 1000px; margin: 0 auto; padding: 24px; }
+
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+    .empty-state h2 { font-size: 20px; margin-bottom: 8px; color: var(--text); }
+    .empty-state p { font-size: 14px; line-height: 1.6; }
+
+    .chat-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 16px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .chat-panel.ended { border-color: var(--red); opacity: 0.7; }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      cursor: pointer;
+      user-select: none;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-header:hover { background: #1f262e; }
+
+    .panel-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .status-badge {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-active { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+    .status-end { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+
+    .panel-controls { display: flex; gap: 6px; align-items: center; }
+
+    .chevron { transition: transform 0.2s; color: var(--text-muted); font-size: 12px; }
+    .chat-panel.collapsed .chevron { transform: rotate(-90deg); }
+    .chat-panel.collapsed .panel-body { display: none; }
+
+    .panel-body { padding: 20px; }
+
+    .input-row { display: flex; gap: 8px; margin-bottom: 12px; align-items: flex-end; }
+
+    .poll-interval-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 14px;
+      margin-bottom: 16px;
+      padding: 10px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .poll-interval-row .poll-title { font-weight: 600; color: var(--text); margin-right: 4px; }
+    .poll-interval-row label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      color: var(--text);
+      user-select: none;
+    }
+    .poll-interval-row input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+    .poll-interval-row .poll-effective {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+    }
+
+    .message-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: var(--font-mono);
+      outline: none;
+      transition: border-color 0.2s;
+      resize: vertical;
+      min-height: 42px;
+      max-height: 200px;
+      line-height: 1.5;
+    }
+
+    .message-input:focus { border-color: var(--accent); }
+    .message-input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    .column h3 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .column h3 .count {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+    }
+
+    .msg-list { display: flex; flex-direction: column; gap: 6px; min-height: 60px; }
+
+    .msg-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-family: var(--font-mono);
+      line-height: 1.5;
+      word-break: break-word;
+    }
+
+    .msg-item .msg-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+    .msg-item .timestamp { font-size: 11px; color: var(--text-muted); }
+    .msg-item .msg-text.pending-message-editable {
+      cursor: text;
+    }
+    .msg-item .msg-text.pending-message-editable:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .msg-item .btn-delete-msg {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: all 0.15s;
+      opacity: 0;
+    }
+    .msg-item:hover .btn-delete-msg { opacity: 1; }
+    .msg-item .btn-delete-msg:hover { color: var(--red); background: var(--red-dim); }
+    .msg-item.end-signal { border-color: var(--red); color: var(--red); font-weight: 600; text-align: center; }
+    .msg-item .msg-text { white-space: pre-wrap; }
+    .msg-inline-editor {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--accent);
+      color: var(--text);
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-family: var(--font-mono);
+      line-height: 1.5;
+      resize: vertical;
+      min-height: 40px;
+      max-height: 220px;
+      white-space: pre-wrap;
+      outline: none;
+    }
+    .msg-empty { color: var(--text-muted); font-size: 13px; font-style: italic; padding: 10px; text-align: center; }
+
+    .chat-id-editable {
+      background: none;
+      border: 1px solid transparent;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 600;
+      font-family: inherit;
+      padding: 2px 6px;
+      border-radius: 4px;
+      outline: none;
+      width: 100px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .chat-id-editable:hover { border-color: var(--border); background: var(--surface); }
+    .chat-id-editable:focus { border-color: var(--accent); background: var(--surface); }
+
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      font-size: 13px;
+      animation: slideIn 0.2s ease-out, fadeOut 0.3s 2.5s ease-in forwards;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes fadeOut { to { opacity: 0; transform: translateY(10px); } }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span class="logo">&#9881;</span> Cursor Prompt Queue Manager</h1>
+  <div class="header-actions">
+    <input type="text" class="new-chat-input" id="newChatId" placeholder="Chat ID...">
+    <button class="btn btn-primary" id="btnNewChat">+ New Chat</button>
+  </div>
+</div>
+
+<div class="container" id="app">
+  <div class="empty-state" id="emptyState">
+    <div class="icon">&#128233;</div>
+    <h2>No Chat Queues Yet</h2>
+    <p>Enter a Chat ID above and click "+ New Chat" to create a queue.<br>
+    Leave it blank for a random ID.<br>
+    Or just use <code>CPQM_ID=&lt;n&gt;</code> in Cursor — the chat auto-creates on first poll.</p>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const BASE = '';
+
+// Cached state per chat so we can diff instead of full re-render
+let cachedState = {};
+// Preserve input values across refreshes
+let inputValues = {};
+// Track collapsed state
+let collapsedPanels = new Set();
+
+function toast(msg) {
+  const c = document.getElementById('toasts');
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+function fmtTime(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function escHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function escAttr(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(BASE + path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  return res.json();
+}
+
+// ── Actions ─────────────────────────────────────────────────────
+
+async function createChat() {
+  const input = document.getElementById('newChatId');
+  const id = input.value.trim();
+
+  let result;
+  if (id) {
+    if (cachedState[id]) { toast('Chat ' + id + ' already exists'); return; }
+    result = await api('/chats/' + id, { method: 'POST' });
+  } else {
+    result = await api('/chats/new', { method: 'POST' });
+  }
+
+  input.value = '';
+  toast('Chat ' + result.chat_id + ' created');
+  await refresh();
+}
+
+function pollIntervalLabel(sec) {
+  if (sec === 30) return '30 seconds';
+  if (sec === 120) return '2 minutes';
+  if (sec === 180) return '3 minutes';
+  if (sec === 240) return '4 minutes';
+  if (sec === 300) return '5 minutes';
+  return sec + 's';
+}
+
+async function savePollSelections(chatId) {
+  const panel = document.getElementById('panel-' + chatId);
+  if (!panel) return;
+  const checked = Array.from(panel.querySelectorAll('input.poll-interval-cb:checked')).map(cb => Number(cb.value));
+  try {
+    const result = await api('/chats/' + chatId + '/poll-intervals', {
+      method: 'PUT',
+      body: JSON.stringify({ selected_seconds: checked }),
+    });
+    if (!result.ok) {
+      toast('Poll interval save failed');
+      return;
+    }
+    await refresh();
+  } catch (e) {
+    toast('Poll interval save failed: ' + e.message);
+  }
+}
+
+async function enqueue(chatId) {
+  const input = document.getElementById('msg-' + chatId);
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  await api('/queue/' + chatId, { method: 'POST', body: JSON.stringify({ message: text }) });
+  input.value = '';
+  inputValues[chatId] = '';
+  toast('Queued to Chat ' + chatId);
+  await refresh();
+}
+
+async function endChat(chatId) {
+  await api('/queue/' + chatId + '/end', { method: 'POST' });
+  toast('Chat ' + chatId + ' ended');
+  await refresh();
+}
+
+async function reopenChat(chatId) {
+  await api('/queue/' + chatId + '/reopen', { method: 'POST' });
+  toast('Chat ' + chatId + ' reopened');
+  await refresh();
+}
+
+async function deleteChat(chatId) {
+  await api('/chats/' + chatId, { method: 'DELETE' });
+  delete cachedState[chatId];
+  delete inputValues[chatId];
+  collapsedPanels.delete(chatId);
+  toast('Chat ' + chatId + ' deleted');
+  await refresh();
+}
+
+async function deletePendingMsg(chatId, messageId) {
+  const result = await api('/queue/' + chatId + '/message/' + messageId, { method: 'DELETE' });
+  if (!result.ok) {
+    toast('Delete failed: ' + (result.reason || 'unknown error'));
+    return;
+  }
+  toast('Message deleted');
+  await refresh();
+}
+
+async function updatePendingMsg(chatId, messageId, text) {
+  const result = await api('/queue/' + chatId + '/message/' + messageId, {
+    method: 'PUT',
+    body: JSON.stringify({ message: text })
+  });
+  if (!result.ok) {
+    throw new Error(result.reason || 'Failed to update message');
+  }
+}
+
+async function renameChat(oldId, newId) {
+  newId = newId.trim();
+  if (!newId || newId === oldId) return;
+  const result = await api('/chats/' + oldId + '/rename/' + newId, { method: 'PUT' });
+  if (result.ok) {
+    // Migrate local state
+    inputValues[newId] = inputValues[oldId] || '';
+    delete inputValues[oldId];
+    if (collapsedPanels.has(oldId)) {
+      collapsedPanels.delete(oldId);
+      collapsedPanels.add(newId);
+    }
+    delete cachedState[oldId];
+    toast('Renamed Chat ' + oldId + ' → ' + newId);
+  } else {
+    toast('Rename failed: ' + (result.reason || 'unknown error'));
+  }
+  await refresh();
+}
+
+function renameChatFromInput(input) {
+  const oldId = input.dataset.chatId;
+  const newId = input.value;
+  if (!oldId || oldId === newId) {
+    input.value = oldId;
+    return;
+  }
+  renameChat(oldId, newId);
+}
+
+function handleTextareaKey(event, chatId) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    enqueue(chatId);
+  }
+}
+
+function autoResizeTextarea(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
+function togglePanel(chatId, event) {
+  if (event) {
+    const isButton = event.target.closest('button[data-action], input.chat-id-editable');
+    if (isButton) {
+      event.stopPropagation();
+      return;
+    }
+  }
+  
+  const panel = document.getElementById('panel-' + chatId);
+  if (!panel) return;
+  if (collapsedPanels.has(chatId)) {
+    collapsedPanels.delete(chatId);
+    panel.classList.remove('collapsed');
+  } else {
+    collapsedPanels.add(chatId);
+    panel.classList.add('collapsed');
+  }
+}
+
+// ── Saving input values before refresh ──────────────────────────
+
+function saveInputValues() {
+  document.querySelectorAll('textarea.message-input').forEach(el => {
+    const chatId = el.id.replace('msg-', '');
+    inputValues[chatId] = el.value;
+  });
+}
+
+// ── Rendering ───────────────────────────────────────────────────
+
+function buildPanelHTML(chatId, data) {
+  const isEnd = data.status === 'END';
+  const safeChatId = escAttr(chatId);
+
+  const pendingHtml = data.pending.length > 0
+    ? data.pending.map(m =>
+        '<div class="msg-item"><div class="msg-text pending-message-editable" data-chat-id="' + safeChatId + '" data-message-id="' + m.id + '" title="Double click to edit message inline">' + escHtml(m.text) + '</div>' +
+        '<div class="msg-footer">' +
+          '<span class="timestamp">Queued ' + fmtTime(m.queued_at) + '</span>' +
+          '<button class="btn-delete-msg" type="button" onclick="event.stopPropagation(); deletePendingMsg(\'' + chatId + '\', ' + m.id + ');" title="Delete message">&#10005;</button>' +
+        '</div></div>'
+      ).join('')
+    : '<div class="msg-empty">No pending messages</div>';
+
+  const consumedHtml = data.consumed.length > 0
+    ? data.consumed.slice().reverse().map(m =>
+        '<div class="msg-item"><div class="msg-text">' + escHtml(m.text) + '</div>' +
+        '<div class="timestamp">Consumed ' + fmtTime(m.consumed_at) + '</div></div>'
+      ).join('')
+    : '<div class="msg-empty">Nothing consumed yet</div>';
+
+  const endSignal = isEnd
+    ? '<div class="msg-item end-signal">&#9940; END SIGNAL SENT</div>'
+    : '';
+
+  const savedValue = escHtml(inputValues[chatId] || '');
+
+  const selected = data.poll_selected_seconds || [];
+  const selectedSet = new Set(selected);
+  const choices = data.poll_interval_choices_seconds || [30, 120, 180, 240, 300];
+  const effective = data.effective_poll_wait_seconds != null ? data.effective_poll_wait_seconds : 60;
+
+  const pollRow =
+    '<div class="poll-interval-row" onclick="event.stopPropagation();">' +
+    '<span class="poll-title">Worker wait between polls</span>' +
+    choices.map(function (sec) {
+      const id = 'poll-' + chatId + '-' + sec;
+      const ck = selectedSet.has(sec) ? ' checked' : '';
+      return '<label for="' + id + '">' +
+        '<input type="checkbox" class="poll-interval-cb" id="' + id + '" value="' + sec + '"' + ck +
+        ' onchange="savePollSelections(\'' + chatId + '\')">' +
+        pollIntervalLabel(sec) +
+        '</label>';
+    }).join('') +
+    '<span class="poll-effective">effective: ' + effective + 's (default 60 if none checked)</span>' +
+    '</div>';
+
+  const controlBtns = isEnd
+    ? '<button class="btn btn-reopen" type="button" onclick="event.stopPropagation(); reopenChat(\'' + chatId + '\');">&#9888;&#65039; Reopen</button>'
+    : '<button class="btn btn-danger" type="button" onclick="event.stopPropagation(); endChat(\'' + chatId + '\');">&#128308; End</button>';
+
+  return '<div class="panel-header" onclick="togglePanel(\'' + chatId + '\', event)">' +
+    '<div class="panel-title">' +
+      '<span class="chevron">&#9660;</span>' +
+      'Chat ID: <input type="text" class="chat-id-editable" data-chat-id="' + safeChatId + '" value="' + safeChatId + '"' +
+        ' onclick="event.stopPropagation();"' +
+        ' onkeydown="if(event.key===\'Enter\'){this.blur();}" ondblclick="this.select();" ' +
+        ' onblur="renameChatFromInput(this)">' +
+      '<span class="status-badge ' + (isEnd ? 'status-end' : 'status-active') + '">' + data.status + '</span>' +
+    '</div>' +
+    '<div class="panel-controls">' +
+      controlBtns +
+      '<button class="btn btn-ghost" type="button" onclick="event.stopPropagation(); deleteChat(\'' + chatId + '\');" title="Delete">&#128465;</button>' +
+    '</div>' +
+  '</div>' +
+  '<div class="panel-body">' +
+    '<div class="input-row">' +
+      '<textarea class="message-input" id="msg-' + chatId + '"' +
+        ' placeholder="Type a prompt for Cursor... (Shift+Enter for new line)"' +
+        ' rows="1"' +
+        (isEnd ? ' disabled' : '') +
+        ' onkeydown="handleTextareaKey(event, \'' + chatId + '\')"' +
+        ' oninput="autoResizeTextarea(this)">' + savedValue + '</textarea>' +
+      '<button class="btn btn-primary" onclick="enqueue(\'' + chatId + '\')"' +
+        (isEnd ? ' disabled' : '') + '>Queue</button>' +
+    '</div>' +
+    pollRow +
+    '<div class="columns">' +
+      '<div class="column">' +
+        '<h3>&#128203; Pending <span class="count">' + data.pending.length + '</span></h3>' +
+        '<div class="msg-list">' + pendingHtml + endSignal + '</div>' +
+      '</div>' +
+      '<div class="column">' +
+        '<h3>&#9989; Consumed <span class="count">' + data.consumed.length + '</span></h3>' +
+        '<div class="msg-list">' + consumedHtml + '</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function stateFingerprint(data) {
+  const pollKey = (data.poll_selected_seconds || []).slice().sort(function (a, b) { return a - b; }).join(',');
+  return JSON.stringify({
+    s: data.status,
+    p: data.pending.map(m => m.id + '|' + (m.text || '')),
+    c: data.consumed.map(m => m.id + '|' + (m.text || '')),
+    w: (data.effective_poll_wait_seconds != null ? data.effective_poll_wait_seconds : '') + '|' + pollKey,
+  });
+}
+
+function beginPendingMessageEdit(targetEl) {
+  if (!targetEl || targetEl.classList.contains('editing')) {
+    return;
+  }
+
+  const chatId = targetEl.dataset.chatId;
+  const messageId = Number(targetEl.dataset.messageId);
+  if (!chatId || Number.isNaN(messageId)) {
+    return;
+  }
+
+  const footer = targetEl.nextElementSibling;
+  const originalText = targetEl.textContent || '';
+  const editor = document.createElement('textarea');
+
+  editor.className = 'msg-inline-editor';
+  editor.value = originalText;
+  targetEl.style.display = 'none';
+  targetEl.classList.add('editing');
+
+  if (footer && footer.parentNode) {
+    footer.parentNode.insertBefore(editor, footer);
+  } else {
+    targetEl.parentNode.appendChild(editor);
+  }
+
+  let closing = false;
+  const finalize = async (save) => {
+    if (closing) return;
+    closing = true;
+
+    const nextText = editor.value;
+    editor.remove();
+    targetEl.style.display = '';
+    targetEl.classList.remove('editing');
+
+    if (!save || nextText === originalText) {
+      targetEl.textContent = originalText;
+      return;
+    }
+
+    if (!nextText.trim()) {
+      toast('Message cannot be empty');
+      targetEl.textContent = originalText;
+      return;
+    }
+
+    try {
+      await updatePendingMsg(chatId, messageId, nextText);
+      toast('Message updated');
+      await refresh();
+    } catch (err) {
+      targetEl.textContent = originalText;
+      toast('Failed to update message: ' + err.message);
+      await refresh();
+    }
+  };
+
+  const scheduleFinalize = (save) => {
+    if (closing) return;
+    void finalize(save);
+  };
+
+  editor.addEventListener('input', () => autoResizeTextarea(editor));
+  editor.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void finalize(true);
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      scheduleFinalize(false);
+    }
+  });
+  editor.addEventListener('blur', () => scheduleFinalize(true));
+
+  autoResizeTextarea(editor);
+  editor.focus();
+  editor.setSelectionRange(editor.value.length, editor.value.length);
+}
+
+function attachActionDelegates() {
+  const appRoot = document.getElementById('app');
+  if (!appRoot) return;
+
+  appRoot.addEventListener('dblclick', (event) => {
+    const editable = event.target.closest('.pending-message-editable');
+    if (!editable) {
+      return;
+    }
+
+    const panel = editable.closest('.chat-panel');
+    if (panel && panel.classList.contains('ended')) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    beginPendingMessageEdit(editable);
+  });
+}
+
+async function refresh() {
+  const chatList = await api('/chats');
+  const container = document.getElementById('app');
+  const empty = document.getElementById('emptyState');
+
+  if (chatList.length === 0) {
+    empty.style.display = '';
+    document.querySelectorAll('.chat-panel').forEach(el => el.remove());
+    cachedState = {};
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Save current input values before touching DOM
+  saveInputValues();
+
+  // Fetch all statuses in parallel
+  const statusPromises = chatList.map(c => api('/queue/' + c.chat_id + '/status'));
+  const statuses = await Promise.all(statusPromises);
+
+  const freshState = {};
+  for (let i = 0; i < chatList.length; i++) {
+    freshState[chatList[i].chat_id] = statuses[i];
+  }
+
+  // Remove panels for deleted chats
+  const currentIds = new Set(chatList.map(c => c.chat_id));
+  document.querySelectorAll('.chat-panel').forEach(el => {
+    const id = el.id.replace('panel-', '');
+    if (!currentIds.has(id)) el.remove();
+  });
+
+    // Create or update panels — only re-render if data actually changed
+    for (const c of chatList) {
+      const chatId = c.chat_id;
+      const data = freshState[chatId];
+      const fp = stateFingerprint(data);
+      let panel = document.getElementById('panel-' + chatId);
+      const activeEl = document.activeElement;
+      
+      // Prevent refreshing if an inline editor is currently active in this panel
+      // or if the chat ID is currently being edited.
+      if (panel && (panel.querySelector('.msg-inline-editor') || panel.querySelector('.chat-id-editable:focus'))) {
+        continue;
+      }
+      if (panel && panel.querySelector('input.poll-interval-cb:focus')) {
+        continue;
+      }
+      
+      const inputWasFocused = activeEl && activeEl.id === 'msg-' + chatId;
+      const cursorStart = inputWasFocused ? activeEl.selectionStart : 0;
+      const cursorEnd = inputWasFocused ? activeEl.selectionEnd : 0;
+
+    if (panel && cachedState[chatId] === fp) {
+      container.appendChild(panel);
+      if (inputWasFocused) {
+        const restoredInput = document.getElementById('msg-' + chatId);
+        if (restoredInput) {
+          restoredInput.focus();
+          restoredInput.setSelectionRange(cursorStart, cursorEnd);
+        }
+      }
+      // Nothing changed for this chat — skip DOM update entirely
+      continue;
+    }
+
+    const isEnd = data.status === 'END';
+    const isCollapsed = collapsedPanels.has(chatId);
+
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'panel-' + chatId;
+      panel.className = 'chat-panel' + (isEnd ? ' ended' : '') + (isCollapsed ? ' collapsed' : '');
+      panel.innerHTML = buildPanelHTML(chatId, data);
+    } else {
+      panel.className = 'chat-panel' + (isEnd ? ' ended' : '') + (isCollapsed ? ' collapsed' : '');
+      panel.innerHTML = buildPanelHTML(chatId, data);
+    }
+
+    container.appendChild(panel);
+
+    // Restore focus and cursor position
+    if (inputWasFocused) {
+      const restoredInput = document.getElementById('msg-' + chatId);
+      if (restoredInput) {
+        restoredInput.focus();
+        restoredInput.setSelectionRange(cursorStart, cursorEnd);
+      }
+    }
+
+    cachedState[chatId] = fp;
+  }
+}
+
+// ── Event listeners ─────────────────────────────────────────────
+
+document.getElementById('btnNewChat').addEventListener('click', createChat);
+
+document.getElementById('newChatId').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') createChat();
+});
+
+// ── Start ───────────────────────────────────────────────────────
+
+attachActionDelegates();
+refresh();
+setInterval(refresh, 3000);
+</script>
+
+<script>
+// Workaround for VS Code Webview swallowing Cmd+V inside iframes
+window.addEventListener("keydown", function(e) {
+    if (e.ctrlKey || e.metaKey) {
+        var key = e.key.toLowerCase();
+        if (key === "v") {
+            document.execCommand("paste");
+            e.preventDefault();
+        } else if (key === "c") {
+            document.execCommand("copy");
+            e.preventDefault();
+        } else if (key === "x") {
+            document.execCommand("cut");
+            e.preventDefault();
+        } else if (key === "a") {
+            document.execCommand("selectAll");
+            e.preventDefault();
+        } else if (key === "z") {
+            document.execCommand("undo");
+            e.preventDefault();
+        }
+    }
+});
+</script>
+
+</body>
+</html>
